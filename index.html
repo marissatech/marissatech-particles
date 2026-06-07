@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>MarissaTech Particle Gravity Toy</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --panel: rgba(5, 8, 14, 0.78);
+    --line: rgba(255,255,255,0.12);
+    --text: rgba(245,248,255,0.94);
+    --muted: rgba(220,230,255,0.66);
+    --hot: #b8d7ff;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: #02030a;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  }
+  canvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    touch-action: none;
+    cursor: crosshair;
+    background: radial-gradient(circle at 50% 50%, #071328 0%, #02030a 56%, #000 100%);
+  }
+  .hud {
+    position: fixed;
+    left: 50%;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: min(760px, calc(100vw - 20px));
+    padding: 9px;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: 0 14px 50px rgba(0,0,0,.38);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    user-select: none;
+  }
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .authorIcon {
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+    border-radius: 7px;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    color: #07101f;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: -.04em;
+    background: linear-gradient(135deg, #d8ecff, #ffb8ed);
+  }
+  .authorIcon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+  }
+  h1 {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1;
+    font-weight: 750;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 46vw;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1.45fr 1.05fr repeat(5, 1fr) auto auto;
+    gap: 7px;
+    align-items: end;
+  }
+  label {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    color: var(--muted);
+    font-size: 10px;
+  }
+  label span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  output { color: var(--text); }
+  input[type="range"], select, button {
+    width: 100%;
+    height: 30px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    color: var(--text);
+    background: rgba(255,255,255,.075);
+    outline: none;
+    font: inherit;
+  }
+  input[type="range"] {
+    padding: 0 2px;
+    accent-color: var(--hot);
+  }
+  select, button { padding: 0 8px; }
+  button {
+    min-width: 58px;
+    cursor: pointer;
+    font-weight: 700;
+  }
+  button:active { transform: translateY(1px); }
+  .error {
+    position: fixed;
+    inset: 18px;
+    display: none;
+    place-items: center;
+    color: white;
+    text-align: center;
+    padding: 22px;
+  }
+  .error > div {
+    max-width: 680px;
+    background: rgba(7,10,20,.88);
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 20px;
+    padding: 22px;
+  }
+  @media (max-width: 760px) {
+    .hud { width: calc(100vw - 16px); padding: 8px; border-radius: 15px; }
+    .top { margin-bottom: 7px; }
+    .sub { max-width: 52vw; }
+    .grid { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+    .countCtl { grid-column: span 2; }
+    input[type="range"], select, button { height: 29px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="GPU particle gravity and drawing simulation"></canvas>
+
+<div class="hud" id="hud">
+  <div class="top">
+    <div class="brand">
+      <div class="authorIcon" aria-label="MarissaTech icon"><img id="hudIcon" alt="" /><span>MT</span></div>
+      <h1>Particle Gravity Toy</h1>
+    </div>
+    <div class="sub" id="stats">Starting…</div>
+  </div>
+
+  <div class="grid">
+    <label class="countCtl"><span>Particles <output id="countOut"></output></span>
+      <select id="count">
+        <option value="32768">2¹⁵</option>
+        <option value="65536">2¹⁶</option>
+        <option value="131072">2¹⁷</option>
+        <option value="262144">2¹⁸</option>
+        <option value="524288">2¹⁹</option>
+        <option value="1048576" selected>2²⁰</option>
+        <option value="2097152">2²¹</option>
+      </select>
+    </label>
+
+    <label><span>Tool</span>
+      <select id="tool">
+        <option value="gravity" selected>Gravity</option>
+        <option value="draw">Draw</option>
+        <option value="repel">Repel</option>
+      </select>
+    </label>
+
+    <label><span>Physics <output id="physicsOut"></output></span><input id="physics" type="range" min="0.5" max="4" value="1.20" step="0.05"></label>
+    <label><span>Gravity <output id="gravityOut"></output></span><input id="gravity" type="range" min="0" max="3.5" value="1.25" step="0.01"></label>
+    <label><span>Brush <output id="brushOut"></output></span><input id="brush" type="range" min="0.012" max="0.18" value="0.07" step="0.002"></label>
+    <label><span>Trails <output id="trailsOut"></output></span><input id="trails" type="range" min="0.015" max="0.35" value="0.075" step="0.005"></label>
+    <label><span>Size <output id="sizeOut"></output></span><input id="size" type="range" min="1" max="4" value="1.35" step="0.1"></label>
+
+    <button id="reset">Reset</button>
+    <button id="pause">Pause</button>
+  </div>
+</div>
+
+<div class="error" id="error"><div></div></div>
+
+<script>
+(() => {
+  'use strict';
+
+  const canvas = document.getElementById('c');
+  const stats = document.getElementById('stats');
+  const errorBox = document.getElementById('error');
+
+  const controls = {
+    count: document.getElementById('count'),
+    tool: document.getElementById('tool'),
+    physics: document.getElementById('physics'),
+    gravity: document.getElementById('gravity'),
+    brush: document.getElementById('brush'),
+    trails: document.getElementById('trails'),
+    size: document.getElementById('size'),
+    reset: document.getElementById('reset'),
+    pause: document.getElementById('pause'),
+    countOut: document.getElementById('countOut'),
+    physicsOut: document.getElementById('physicsOut'),
+    gravityOut: document.getElementById('gravityOut'),
+    brushOut: document.getElementById('brushOut'),
+    trailsOut: document.getElementById('trailsOut'),
+    sizeOut: document.getElementById('sizeOut')
+  };
+
+  // Paste your MarissaTech icon URL here, for example:
+  // const AUTHOR_ICON_URL = 'https://example.com/marissatech-icon.png';
+  const AUTHOR_ICON_URL = 'https://raw.githubusercontent.com/marissatech/marissatech.github.io/refs/heads/main/assets/marissa-tech.webp';
+  const hudIcon = document.getElementById('hudIcon');
+
+  const gl = canvas.getContext('webgl2', {
+    antialias: false,
+    depth: false,
+    stencil: false,
+    alpha: false,
+    preserveDrawingBuffer: false,
+    powerPreference: 'high-performance'
+  });
+
+  if (!gl) return fail('This demo needs WebGL2. Try a modern Chrome, Edge, Firefox, or Safari browser.');
+  if (gl.getParameter(gl.MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS) < 1 || gl.getParameter(gl.MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS) < 4) {
+    return fail('This GPU does not expose enough transform-feedback support for the particle update step.');
+  }
+
+  const ATTR_STATE = 0;
+  const isTouchy = matchMedia('(pointer: coarse)').matches;
+  const dprCap = isTouchy ? 1.35 : 1.8;
+  let W = 1;
+  let H = 1;
+  let aspect = 1;
+  let dpr = 1;
+  let count = Number(controls.count.value);
+  let buffers = [];
+  let vaos = [];
+  let tfos = [];
+  let readIndex = 0;
+  let paused = false;
+  let pointerDown = false;
+  let pointer = [0, 0];
+  let lastT = performance.now();
+  let frameCount = 0;
+  let fps = 0;
+  let fpsT = performance.now();
+  let initializedOnce = false;
+  let pointSizeMax = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1] || 4;
+  let frameId = 0;
+
+  const updateVS = `#version 300 es
+  precision highp float;
+  layout(location=0) in vec4 aState;
+  out vec4 vState;
+
+  uniform float uDt;
+  uniform float uTime;
+  uniform float uAspect;
+  uniform float uGravity;
+  uniform float uFriction;
+  uniform float uPointerDown;
+  uniform float uTool;
+  uniform float uBrush;
+  uniform float uSpawnRate;
+  uniform float uFrame;
+  uniform vec2 uPointer;
+
+  float hash(float n) {
+    return fract(sin(n) * 43758.5453123);
+  }
+
+  vec2 rand2(float n) {
+    return vec2(hash(n + 19.19), hash(n + 73.73));
+  }
+
+  vec2 gravity(vec2 p, vec2 c, float mass) {
+    vec2 d = c - p;
+    float r2 = dot(d, d) + 0.0042;
+    return d * (mass / (r2 * sqrt(r2)));
+  }
+
+  void main() {
+    vec2 pos = aState.xy;
+    vec2 vel = aState.zw;
+    float t = uTime;
+    float id = float(gl_VertexID);
+    vec2 acc = vec2(0.0);
+
+    if (uPointerDown > 0.5 && uTool < 0.5) {
+      acc += gravity(pos, uPointer, 2.15);
+      vec2 d = pos - uPointer;
+      acc += vec2(-d.y, d.x) * 0.055;
+    } else if (uPointerDown > 0.5 && uTool > 1.5) {
+      vec2 d = pos - uPointer;
+      float r2 = dot(d, d) + 0.010;
+      acc += normalize(d + 0.00001) * (0.85 / r2);
+      acc += vec2(-d.y, d.x) * -0.030;
+    } else {
+      vec2 a = vec2(cos(t * 0.76) * uAspect * 0.66, sin(t * 0.52) * 0.72);
+      vec2 b = vec2(cos(t * 0.38 + 2.7) * uAspect * 0.92, sin(t * 0.66 + 1.4) * 0.86);
+      vec2 c = vec2(cos(t * 0.22 + 4.2) * uAspect * 0.30, sin(t * 0.49 + 3.0) * 0.36);
+      acc += gravity(pos, a, 0.92);
+      acc += gravity(pos, b, 0.64);
+      acc += gravity(pos, c, 0.42);
+      acc += gravity(pos, vec2(0.0), 0.14);
+    }
+
+    vel += acc * uGravity * uDt;
+    float speed = length(vel);
+    if (speed > 5.6) vel *= 5.6 / speed;
+    vel *= pow(uFriction, uDt * 60.0);
+    pos += vel * uDt;
+
+    if (uPointerDown > 0.5 && uTool > 0.5 && uTool < 1.5) {
+      float batch = floor(uFrame * 3.0);
+      float chance = hash(id * 12.9898 + batch * 78.233 + floor(t * 24.0));
+      if (chance < uSpawnRate) {
+        vec2 r = rand2(id * 0.137 + batch * 11.7 + t * 0.31);
+        float ang = r.x * 6.28318530718;
+        float rad = sqrt(r.y) * uBrush;
+        vec2 off = vec2(cos(ang) * rad * uAspect, sin(ang) * rad);
+        pos = uPointer + off;
+        vec2 tangent = vec2(-sin(ang), cos(ang));
+        vec2 jitter = rand2(id + batch * 17.0) * 2.0 - 1.0;
+        vel = tangent * (0.55 + hash(id + batch) * 0.75) + jitter * 0.16;
+      } else {
+        vec2 d = pos - uPointer;
+        float nearBrush = exp(-dot(d, d) / max(0.0001, uBrush * uBrush * 2.6));
+        vel += vec2(-d.y, d.x) * nearBrush * 0.10;
+      }
+    }
+
+    float bx = uAspect * 1.20;
+    float by = 1.20;
+    if (pos.x < -bx) pos.x += bx * 2.0;
+    if (pos.x >  bx) pos.x -= bx * 2.0;
+    if (pos.y < -by) pos.y += by * 2.0;
+    if (pos.y >  by) pos.y -= by * 2.0;
+
+    vState = vec4(pos, vel);
+  }`;
+
+  const updateFS = `#version 300 es
+  precision highp float;
+  out vec4 outColor;
+  void main() { outColor = vec4(0.0); }`;
+
+  const renderVS = `#version 300 es
+  precision highp float;
+  layout(location=0) in vec4 aState;
+  uniform float uAspect;
+  uniform float uPointSize;
+  out float vSpeed;
+  out float vDepth;
+  void main() {
+    vec2 p = vec2(aState.x / uAspect, aState.y);
+    gl_Position = vec4(p, 0.0, 1.0);
+    gl_PointSize = uPointSize;
+    vSpeed = clamp(length(aState.zw) * 2.4, 0.0, 1.0);
+    vDepth = clamp(1.0 - length(p) * 0.42, 0.0, 1.0);
+  }`;
+
+  const renderFS = `#version 300 es
+  precision mediump float;
+  in float vSpeed;
+  in float vDepth;
+  out vec4 outColor;
+  void main() {
+    vec2 uv = gl_PointCoord - 0.5;
+    float disc = smoothstep(0.25, 0.02, dot(uv, uv));
+    vec3 slow = vec3(0.30, 0.66, 1.00);
+    vec3 fast = vec3(1.00, 0.52, 0.92);
+    vec3 hot  = vec3(1.00, 0.94, 0.58);
+    vec3 col = mix(slow, fast, vSpeed);
+    col = mix(col, hot, smoothstep(0.78, 1.0, vSpeed) * 0.45);
+    outColor = vec4(col * (0.55 + vDepth * 0.85), disc * 0.62);
+  }`;
+
+  const fadeVS = `#version 300 es
+  precision highp float;
+  out vec2 vUv;
+  void main() {
+    vec2 p = vec2(gl_VertexID == 1 ? 3.0 : -1.0, gl_VertexID == 2 ? 3.0 : -1.0);
+    vUv = p * 0.5 + 0.5;
+    gl_Position = vec4(p, 0.0, 1.0);
+  }`;
+
+  const fadeFS = `#version 300 es
+  precision mediump float;
+  in vec2 vUv;
+  uniform float uFade;
+  out vec4 outColor;
+  void main() {
+    float vignette = smoothstep(1.0, 0.2, length(vUv - 0.5));
+    vec3 ink = mix(vec3(0.0), vec3(0.010, 0.020, 0.050), vignette * 0.65);
+    outColor = vec4(ink, uFade);
+  }`;
+
+  const updateProgram = program(updateVS, updateFS, ['vState']);
+  const renderProgram = program(renderVS, renderFS);
+  const fadeProgram = program(fadeVS, fadeFS);
+
+  const U = {
+    update: uniforms(updateProgram, ['uDt', 'uTime', 'uAspect', 'uGravity', 'uFriction', 'uPointerDown', 'uTool', 'uBrush', 'uSpawnRate', 'uFrame', 'uPointer']),
+    render: uniforms(renderProgram, ['uAspect', 'uPointSize']),
+    fade: uniforms(fadeProgram, ['uFade'])
+  };
+
+  function fail(message) {
+    console.error(message);
+    errorBox.style.display = 'grid';
+    errorBox.firstElementChild.innerHTML = `<h2>Can’t run this particle toy here</h2><p>${escapeHtml(message)}</p>`;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, ch => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'}[ch]));
+  }
+
+  function shader(type, source) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, source);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) + '\n' + source);
+    return s;
+  }
+
+  function program(vs, fs, varyings) {
+    const p = gl.createProgram();
+    gl.attachShader(p, shader(gl.VERTEX_SHADER, vs));
+    gl.attachShader(p, shader(gl.FRAGMENT_SHADER, fs));
+    gl.bindAttribLocation(p, ATTR_STATE, 'aState');
+    if (varyings) gl.transformFeedbackVaryings(p, varyings, gl.SEPARATE_ATTRIBS);
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    return p;
+  }
+
+  function uniforms(p, names) {
+    const out = {};
+    gl.useProgram(p);
+    for (const n of names) out[n] = gl.getUniformLocation(p, n);
+    return out;
+  }
+
+  function resize() {
+    dpr = Math.min(devicePixelRatio || 1, dprCap);
+    W = Math.max(1, Math.floor(innerWidth * dpr));
+    H = Math.max(1, Math.floor(innerHeight * dpr));
+    canvas.width = W;
+    canvas.height = H;
+    aspect = W / H;
+    gl.viewport(0, 0, W, H);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+
+  function makeState(n) {
+    const data = new Float32Array(n * 4);
+    const seed = 1337 + n + Math.floor(performance.now());
+    let s = seed >>> 0;
+    const rnd = () => {
+      s ^= s << 13;
+      s ^= s >>> 17;
+      s ^= s << 5;
+      return ((s >>> 0) / 4294967296);
+    };
+
+    for (let i = 0; i < n; i++) {
+      const arm = Math.floor(rnd() * 5);
+      const r = Math.pow(rnd(), 0.56) * 0.98;
+      const theta = r * 8.4 + arm * 1.2566370614 + (rnd() - 0.5) * 0.50;
+      const spreadX = aspect * (0.42 + rnd() * 0.74);
+      const spreadY = 0.42 + rnd() * 0.74;
+      const x = Math.cos(theta) * r * spreadX;
+      const y = Math.sin(theta) * r * spreadY;
+      const tangent = 0.20 + rnd() * 0.24;
+      const jitter = 0.055;
+      data[i * 4 + 0] = x;
+      data[i * 4 + 1] = y;
+      data[i * 4 + 2] = -Math.sin(theta) * tangent + (rnd() - 0.5) * jitter;
+      data[i * 4 + 3] =  Math.cos(theta) * tangent + (rnd() - 0.5) * jitter;
+    }
+    return data;
+  }
+
+  function destroyGpuState() {
+    for (const x of vaos) gl.deleteVertexArray(x);
+    for (const x of tfos) gl.deleteTransformFeedback(x);
+    for (const x of buffers) gl.deleteBuffer(x);
+    buffers = [];
+    vaos = [];
+    tfos = [];
+  }
+
+  function initParticles(n) {
+    count = n;
+    controls.count.value = String(n);
+    controls.countOut.value = Number(n).toLocaleString();
+    stats.textContent = 'Building…';
+    destroyGpuState();
+
+    const data = makeState(n);
+    for (let i = 0; i < 2; i++) {
+      const b = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, b);
+      gl.bufferData(gl.ARRAY_BUFFER, data.byteLength, gl.DYNAMIC_COPY);
+      if (i === 0) gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
+      buffers.push(b);
+
+      const vao = gl.createVertexArray();
+      gl.bindVertexArray(vao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, b);
+      gl.enableVertexAttribArray(ATTR_STATE);
+      gl.vertexAttribPointer(ATTR_STATE, 4, gl.FLOAT, false, 0, 0);
+      vaos.push(vao);
+
+      const tfo = gl.createTransformFeedback();
+      gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo);
+      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, b);
+      tfos.push(tfo);
+    }
+
+    gl.bindVertexArray(null);
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    readIndex = 0;
+    initializedOnce = true;
+    frameId = 0;
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+
+  function setOutputLabels() {
+    controls.countOut.value = Number(controls.count.value).toLocaleString();
+    controls.physicsOut.value = Number(controls.physics.value).toFixed(2) + '×';
+    controls.gravityOut.value = Number(controls.gravity.value).toFixed(2) + '×';
+    controls.brushOut.value = Math.round(Number(controls.brush.value) * 1000) + '‰';
+    controls.trailsOut.value = Number(controls.trails.value).toFixed(3);
+    controls.sizeOut.value = Number(controls.size.value).toFixed(1) + ' px';
+  }
+
+  function pointerToSim(ev) {
+    const rect = canvas.getBoundingClientRect();
+    const x = (ev.clientX - rect.left) / rect.width;
+    const y = (ev.clientY - rect.top) / rect.height;
+    pointer[0] = (x * 2 - 1) * aspect;
+    pointer[1] = (1 - y * 2);
+  }
+
+  function toolNumber() {
+    if (controls.tool.value === 'draw') return 1;
+    if (controls.tool.value === 'repel') return 2;
+    return 0;
+  }
+
+  function setIcon(url) {
+    const clean = String(url || '').trim();
+    const holder = hudIcon.parentElement;
+    const fallback = holder.querySelector('span');
+    hudIcon.onload = () => {
+      hudIcon.style.display = 'block';
+      fallback.style.display = 'none';
+    };
+    hudIcon.onerror = () => {
+      hudIcon.removeAttribute('src');
+      hudIcon.style.display = 'none';
+      fallback.style.display = 'block';
+    };
+    if (clean) hudIcon.src = clean;
+    else hudIcon.onerror();
+  }
+
+  canvas.addEventListener('pointerdown', ev => {
+    pointerDown = true;
+    pointerToSim(ev);
+    canvas.setPointerCapture?.(ev.pointerId);
+    ev.preventDefault();
+  }, {passive:false});
+
+  canvas.addEventListener('pointermove', ev => {
+    pointerToSim(ev);
+    ev.preventDefault();
+  }, {passive:false});
+
+  canvas.addEventListener('pointerup', ev => {
+    pointerDown = false;
+    pointerToSim(ev);
+    ev.preventDefault();
+  }, {passive:false});
+
+  canvas.addEventListener('pointercancel', () => { pointerDown = false; });
+  canvas.addEventListener('dblclick', () => initParticles(count));
+
+  addEventListener('resize', () => { resize(); }, {passive:true});
+
+  controls.count.addEventListener('change', () => {
+    setOutputLabels();
+    initParticles(Number(controls.count.value));
+  });
+
+  for (const el of [controls.tool, controls.physics, controls.gravity, controls.brush, controls.trails, controls.size]) {
+    el.addEventListener('input', setOutputLabels);
+    el.addEventListener('change', setOutputLabels);
+  }
+
+  controls.reset.addEventListener('click', () => initParticles(count));
+
+  controls.pause.addEventListener('click', () => {
+    paused = !paused;
+    controls.pause.textContent = paused ? 'Resume' : 'Pause';
+  });
+
+  document.addEventListener('visibilitychange', () => { lastT = performance.now(); });
+
+  function updateParticles(dt, time) {
+    const writeIndex = 1 - readIndex;
+    const tool = toolNumber();
+    const brush = Number(controls.brush.value);
+    const spawnRate = tool === 1 ? Math.min(0.085, 0.004 + brush * 0.26) : 0;
+
+    gl.useProgram(updateProgram);
+    gl.uniform1f(U.update.uDt, dt);
+    gl.uniform1f(U.update.uTime, time);
+    gl.uniform1f(U.update.uAspect, aspect);
+    gl.uniform1f(U.update.uGravity, Number(controls.gravity.value));
+    gl.uniform1f(U.update.uFriction, pointerDown ? 0.992 : 0.9978);
+    gl.uniform1f(U.update.uPointerDown, pointerDown ? 1 : 0);
+    gl.uniform1f(U.update.uTool, tool);
+    gl.uniform1f(U.update.uBrush, brush);
+    gl.uniform1f(U.update.uSpawnRate, spawnRate);
+    gl.uniform1f(U.update.uFrame, frameId++);
+    gl.uniform2f(U.update.uPointer, pointer[0], pointer[1]);
+
+    gl.bindVertexArray(vaos[readIndex]);
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfos[writeIndex]);
+    gl.enable(gl.RASTERIZER_DISCARD);
+    gl.beginTransformFeedback(gl.POINTS);
+    gl.drawArrays(gl.POINTS, 0, count);
+    gl.endTransformFeedback();
+    gl.disable(gl.RASTERIZER_DISCARD);
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    readIndex = writeIndex;
+  }
+
+  function draw() {
+    gl.viewport(0, 0, W, H);
+    gl.disable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(fadeProgram);
+    gl.uniform1f(U.fade.uFade, Number(controls.trails.value));
+    gl.bindVertexArray(null);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    gl.useProgram(renderProgram);
+    gl.uniform1f(U.render.uAspect, aspect);
+    gl.uniform1f(U.render.uPointSize, Math.min(Number(controls.size.value) * dpr, pointSizeMax));
+    gl.bindVertexArray(vaos[readIndex]);
+    gl.drawArrays(gl.POINTS, 0, count);
+    gl.bindVertexArray(null);
+  }
+
+  function tick(now) {
+    const elapsed = Math.min(0.030, Math.max(0.001, (now - lastT) / 1000));
+    lastT = now;
+    const simDt = Math.min(0.060, elapsed * Number(controls.physics.value));
+
+    if (initializedOnce && !paused) updateParticles(simDt, now * 0.001);
+    if (initializedOnce) draw();
+
+    frameCount++;
+    if (now - fpsT > 350) {
+      fps = Math.round(frameCount * 1000 / (now - fpsT));
+      frameCount = 0;
+      fpsT = now;
+      const mode = controls.tool.value === 'draw' ? 'draw' : controls.tool.value === 'repel' ? 'repel' : 'gravity';
+      stats.textContent = `${Number(count).toLocaleString()} • ${fps} fps • ${mode}`;
+    }
+    requestAnimationFrame(tick);
+  }
+
+  try {
+    resize();
+    setOutputLabels();
+    setIcon(AUTHOR_ICON_URL);
+
+    if (isTouchy && (navigator.deviceMemory || 4) <= 3) {
+      controls.count.value = '262144';
+      count = 262144;
+      setOutputLabels();
+    }
+
+    initParticles(count);
+    requestAnimationFrame(tick);
+  } catch (err) {
+    fail(String(err.message || err));
+  }
+})();
+</script>
+</body>
+</html>
