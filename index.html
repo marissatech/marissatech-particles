@@ -94,6 +94,37 @@
     text-overflow: ellipsis;
     max-width: 46vw;
   }
+  .topRight {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .toggleBtn {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 26px;
+    min-width: 30px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: rgba(255,255,255,.075);
+    color: var(--text);
+    cursor: pointer;
+    font: inherit;
+    font-size: 11px;
+    line-height: 1;
+  }
+  .toggleBtn:active { transform: translateY(1px); }
+  .toggleBtn .chev {
+    display: inline-block;
+    transition: transform .18s ease;
+  }
+  .hud.collapsed .toggleBtn .chev { transform: rotate(180deg); }
+  .hud.collapsed .top { margin-bottom: 0; }
+  .hud.collapsed .grid { display: none; }
   .grid {
     display: grid;
     grid-template-columns: 1.45fr 1.05fr repeat(5, 1fr) auto auto;
@@ -153,26 +184,28 @@
   @media (max-width: 760px) {
     .hud { width: calc(100vw - 16px); padding: 8px; border-radius: 15px; }
     .top { margin-bottom: 7px; }
-    .sub { max-width: 52vw; }
+    .sub { max-width: 38vw; }
     .grid { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
     .countCtl { grid-column: span 2; }
     input[type="range"], select, button { height: 29px; }
+    .hud.collapsed .top { margin-bottom: 0; }
   }
 </style>
 </head>
 <body>
 <canvas id="c" aria-label="GPU particle gravity and drawing simulation"></canvas>
-
 <div class="hud" id="hud">
   <div class="top">
     <div class="brand">
       <div class="authorIcon" aria-label="MarissaTech icon"><img id="hudIcon" alt="" /><span>MT</span></div>
       <h1>Particle Gravity Toy</h1>
     </div>
-    <div class="sub" id="stats">Starting…</div>
+    <div class="topRight">
+      <div class="sub" id="stats">Starting…</div>
+      <button class="toggleBtn" id="hudToggle" type="button" aria-expanded="true" aria-controls="hudGrid" aria-label="Collapse controls" title="Collapse controls"><span class="chev">⚙️</span></button>
+    </div>
   </div>
-
-  <div class="grid">
+  <div class="grid" id="hudGrid">
     <label class="countCtl"><span>Particles <output id="countOut"></output></span>
       <select id="count">
         <option value="32768">2¹⁵</option>
@@ -184,7 +217,6 @@
         <option value="2097152">2²¹</option>
       </select>
     </label>
-
     <label><span>Tool</span>
       <select id="tool">
         <option value="gravity" selected>Gravity</option>
@@ -192,28 +224,24 @@
         <option value="repel">Repel</option>
       </select>
     </label>
-
     <label><span>Physics <output id="physicsOut"></output></span><input id="physics" type="range" min="0.5" max="4" value="1.20" step="0.05"></label>
     <label><span>Gravity <output id="gravityOut"></output></span><input id="gravity" type="range" min="0" max="3.5" value="1.25" step="0.01"></label>
     <label><span>Brush <output id="brushOut"></output></span><input id="brush" type="range" min="0.012" max="0.18" value="0.07" step="0.002"></label>
     <label><span>Trails <output id="trailsOut"></output></span><input id="trails" type="range" min="0.015" max="0.35" value="0.075" step="0.005"></label>
     <label><span>Size <output id="sizeOut"></output></span><input id="size" type="range" min="1" max="4" value="1.35" step="0.1"></label>
-
     <button id="reset">Reset</button>
     <button id="pause">Pause</button>
   </div>
 </div>
-
 <div class="error" id="error"><div></div></div>
-
 <script>
 (() => {
   'use strict';
-
   const canvas = document.getElementById('c');
   const stats = document.getElementById('stats');
   const errorBox = document.getElementById('error');
-
+  const hud = document.getElementById('hud');
+  const hudToggle = document.getElementById('hudToggle');
   const controls = {
     count: document.getElementById('count'),
     tool: document.getElementById('tool'),
@@ -231,12 +259,9 @@
     trailsOut: document.getElementById('trailsOut'),
     sizeOut: document.getElementById('sizeOut')
   };
-
   // Paste your MarissaTech icon URL here, for example:
-  // const AUTHOR_ICON_URL = 'https://example.com/marissatech-icon.png';
-  const AUTHOR_ICON_URL = 'https://raw.githubusercontent.com/marissatech/marissatech.github.io/refs/heads/main/assets/marissa-tech.webp';
+  const AUTHOR_ICON_URL = 'https://github.com/marissatech/marissatech.github.io/blob/main/assets/marissa-tech.webp?raw=true';
   const hudIcon = document.getElementById('hudIcon');
-
   const gl = canvas.getContext('webgl2', {
     antialias: false,
     depth: false,
@@ -245,14 +270,13 @@
     preserveDrawingBuffer: false,
     powerPreference: 'high-performance'
   });
-
   if (!gl) return fail('This demo needs WebGL2. Try a modern Chrome, Edge, Firefox, or Safari browser.');
   if (gl.getParameter(gl.MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS) < 1 || gl.getParameter(gl.MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS) < 4) {
     return fail('This GPU does not expose enough transform-feedback support for the particle update step.');
   }
-
   const ATTR_STATE = 0;
   const isTouchy = matchMedia('(pointer: coarse)').matches;
+  const isSmallScreen = matchMedia('(max-width: 760px)').matches;
   const dprCap = isTouchy ? 1.35 : 1.8;
   let W = 1;
   let H = 1;
@@ -273,12 +297,10 @@
   let initializedOnce = false;
   let pointSizeMax = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1] || 4;
   let frameId = 0;
-
   const updateVS = `#version 300 es
   precision highp float;
   layout(location=0) in vec4 aState;
   out vec4 vState;
-
   uniform float uDt;
   uniform float uTime;
   uniform float uAspect;
@@ -290,28 +312,23 @@
   uniform float uSpawnRate;
   uniform float uFrame;
   uniform vec2 uPointer;
-
   float hash(float n) {
     return fract(sin(n) * 43758.5453123);
   }
-
   vec2 rand2(float n) {
     return vec2(hash(n + 19.19), hash(n + 73.73));
   }
-
   vec2 gravity(vec2 p, vec2 c, float mass) {
     vec2 d = c - p;
     float r2 = dot(d, d) + 0.0042;
     return d * (mass / (r2 * sqrt(r2)));
   }
-
   void main() {
     vec2 pos = aState.xy;
     vec2 vel = aState.zw;
     float t = uTime;
     float id = float(gl_VertexID);
     vec2 acc = vec2(0.0);
-
     if (uPointerDown > 0.5 && uTool < 0.5) {
       acc += gravity(pos, uPointer, 2.15);
       vec2 d = pos - uPointer;
@@ -330,13 +347,11 @@
       acc += gravity(pos, c, 0.42);
       acc += gravity(pos, vec2(0.0), 0.14);
     }
-
     vel += acc * uGravity * uDt;
     float speed = length(vel);
     if (speed > 5.6) vel *= 5.6 / speed;
     vel *= pow(uFriction, uDt * 60.0);
     pos += vel * uDt;
-
     if (uPointerDown > 0.5 && uTool > 0.5 && uTool < 1.5) {
       float batch = floor(uFrame * 3.0);
       float chance = hash(id * 12.9898 + batch * 78.233 + floor(t * 24.0));
@@ -355,22 +370,18 @@
         vel += vec2(-d.y, d.x) * nearBrush * 0.10;
       }
     }
-
     float bx = uAspect * 1.20;
     float by = 1.20;
     if (pos.x < -bx) pos.x += bx * 2.0;
     if (pos.x >  bx) pos.x -= bx * 2.0;
     if (pos.y < -by) pos.y += by * 2.0;
     if (pos.y >  by) pos.y -= by * 2.0;
-
     vState = vec4(pos, vel);
   }`;
-
   const updateFS = `#version 300 es
   precision highp float;
   out vec4 outColor;
   void main() { outColor = vec4(0.0); }`;
-
   const renderVS = `#version 300 es
   precision highp float;
   layout(location=0) in vec4 aState;
@@ -385,7 +396,6 @@
     vSpeed = clamp(length(aState.zw) * 2.4, 0.0, 1.0);
     vDepth = clamp(1.0 - length(p) * 0.42, 0.0, 1.0);
   }`;
-
   const renderFS = `#version 300 es
   precision mediump float;
   in float vSpeed;
@@ -401,7 +411,6 @@
     col = mix(col, hot, smoothstep(0.78, 1.0, vSpeed) * 0.45);
     outColor = vec4(col * (0.55 + vDepth * 0.85), disc * 0.62);
   }`;
-
   const fadeVS = `#version 300 es
   precision highp float;
   out vec2 vUv;
@@ -410,7 +419,6 @@
     vUv = p * 0.5 + 0.5;
     gl_Position = vec4(p, 0.0, 1.0);
   }`;
-
   const fadeFS = `#version 300 es
   precision mediump float;
   in vec2 vUv;
@@ -421,27 +429,22 @@
     vec3 ink = mix(vec3(0.0), vec3(0.010, 0.020, 0.050), vignette * 0.65);
     outColor = vec4(ink, uFade);
   }`;
-
   const updateProgram = program(updateVS, updateFS, ['vState']);
   const renderProgram = program(renderVS, renderFS);
   const fadeProgram = program(fadeVS, fadeFS);
-
   const U = {
     update: uniforms(updateProgram, ['uDt', 'uTime', 'uAspect', 'uGravity', 'uFriction', 'uPointerDown', 'uTool', 'uBrush', 'uSpawnRate', 'uFrame', 'uPointer']),
     render: uniforms(renderProgram, ['uAspect', 'uPointSize']),
     fade: uniforms(fadeProgram, ['uFade'])
   };
-
   function fail(message) {
     console.error(message);
     errorBox.style.display = 'grid';
     errorBox.firstElementChild.innerHTML = `<h2>Can’t run this particle toy here</h2><p>${escapeHtml(message)}</p>`;
   }
-
   function escapeHtml(s) {
     return String(s).replace(/[&<>"]/g, ch => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;'}[ch]));
   }
-
   function shader(type, source) {
     const s = gl.createShader(type);
     gl.shaderSource(s, source);
@@ -449,7 +452,6 @@
     if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) + '\n' + source);
     return s;
   }
-
   function program(vs, fs, varyings) {
     const p = gl.createProgram();
     gl.attachShader(p, shader(gl.VERTEX_SHADER, vs));
@@ -460,14 +462,12 @@
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
     return p;
   }
-
   function uniforms(p, names) {
     const out = {};
     gl.useProgram(p);
     for (const n of names) out[n] = gl.getUniformLocation(p, n);
     return out;
   }
-
   function resize() {
     dpr = Math.min(devicePixelRatio || 1, dprCap);
     W = Math.max(1, Math.floor(innerWidth * dpr));
@@ -479,7 +479,6 @@
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
   }
-
   function makeState(n) {
     const data = new Float32Array(n * 4);
     const seed = 1337 + n + Math.floor(performance.now());
@@ -490,7 +489,6 @@
       s ^= s << 5;
       return ((s >>> 0) / 4294967296);
     };
-
     for (let i = 0; i < n; i++) {
       const arm = Math.floor(rnd() * 5);
       const r = Math.pow(rnd(), 0.56) * 0.98;
@@ -508,7 +506,6 @@
     }
     return data;
   }
-
   function destroyGpuState() {
     for (const x of vaos) gl.deleteVertexArray(x);
     for (const x of tfos) gl.deleteTransformFeedback(x);
@@ -517,14 +514,12 @@
     vaos = [];
     tfos = [];
   }
-
   function initParticles(n) {
     count = n;
     controls.count.value = String(n);
     controls.countOut.value = Number(n).toLocaleString();
     stats.textContent = 'Building…';
     destroyGpuState();
-
     const data = makeState(n);
     for (let i = 0; i < 2; i++) {
       const b = gl.createBuffer();
@@ -532,20 +527,17 @@
       gl.bufferData(gl.ARRAY_BUFFER, data.byteLength, gl.DYNAMIC_COPY);
       if (i === 0) gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
       buffers.push(b);
-
       const vao = gl.createVertexArray();
       gl.bindVertexArray(vao);
       gl.bindBuffer(gl.ARRAY_BUFFER, b);
       gl.enableVertexAttribArray(ATTR_STATE);
       gl.vertexAttribPointer(ATTR_STATE, 4, gl.FLOAT, false, 0, 0);
       vaos.push(vao);
-
       const tfo = gl.createTransformFeedback();
       gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfo);
       gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, b);
       tfos.push(tfo);
     }
-
     gl.bindVertexArray(null);
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
@@ -555,7 +547,6 @@
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
   }
-
   function setOutputLabels() {
     controls.countOut.value = Number(controls.count.value).toLocaleString();
     controls.physicsOut.value = Number(controls.physics.value).toFixed(2) + '×';
@@ -564,7 +555,17 @@
     controls.trailsOut.value = Number(controls.trails.value).toFixed(3);
     controls.sizeOut.value = Number(controls.size.value).toFixed(1) + ' px';
   }
-
+  function setHudCollapsed(collapsed) {
+    hud.classList.toggle('collapsed', collapsed);
+    hudToggle.setAttribute('aria-expanded', String(!collapsed));
+    const label = collapsed ? 'Expand controls' : 'Collapse controls';
+    hudToggle.setAttribute('aria-label', label);
+    hudToggle.title = label;
+  }
+  hudToggle.addEventListener('click', () => {
+    setHudCollapsed(!hud.classList.contains('collapsed'));
+  });
+  setHudCollapsed(isSmallScreen || isTouchy);
   function pointerToSim(ev) {
     const rect = canvas.getBoundingClientRect();
     const x = (ev.clientX - rect.left) / rect.width;
@@ -572,13 +573,11 @@
     pointer[0] = (x * 2 - 1) * aspect;
     pointer[1] = (1 - y * 2);
   }
-
   function toolNumber() {
     if (controls.tool.value === 'draw') return 1;
     if (controls.tool.value === 'repel') return 2;
     return 0;
   }
-
   function setIcon(url) {
     const clean = String(url || '').trim();
     const holder = hudIcon.parentElement;
@@ -595,55 +594,43 @@
     if (clean) hudIcon.src = clean;
     else hudIcon.onerror();
   }
-
   canvas.addEventListener('pointerdown', ev => {
     pointerDown = true;
     pointerToSim(ev);
     canvas.setPointerCapture?.(ev.pointerId);
     ev.preventDefault();
   }, {passive:false});
-
   canvas.addEventListener('pointermove', ev => {
     pointerToSim(ev);
     ev.preventDefault();
   }, {passive:false});
-
   canvas.addEventListener('pointerup', ev => {
     pointerDown = false;
     pointerToSim(ev);
     ev.preventDefault();
   }, {passive:false});
-
   canvas.addEventListener('pointercancel', () => { pointerDown = false; });
   canvas.addEventListener('dblclick', () => initParticles(count));
-
   addEventListener('resize', () => { resize(); }, {passive:true});
-
   controls.count.addEventListener('change', () => {
     setOutputLabels();
     initParticles(Number(controls.count.value));
   });
-
   for (const el of [controls.tool, controls.physics, controls.gravity, controls.brush, controls.trails, controls.size]) {
     el.addEventListener('input', setOutputLabels);
     el.addEventListener('change', setOutputLabels);
   }
-
   controls.reset.addEventListener('click', () => initParticles(count));
-
   controls.pause.addEventListener('click', () => {
     paused = !paused;
     controls.pause.textContent = paused ? 'Resume' : 'Pause';
   });
-
   document.addEventListener('visibilitychange', () => { lastT = performance.now(); });
-
   function updateParticles(dt, time) {
     const writeIndex = 1 - readIndex;
     const tool = toolNumber();
     const brush = Number(controls.brush.value);
     const spawnRate = tool === 1 ? Math.min(0.085, 0.004 + brush * 0.26) : 0;
-
     gl.useProgram(updateProgram);
     gl.uniform1f(U.update.uDt, dt);
     gl.uniform1f(U.update.uTime, time);
@@ -656,7 +643,6 @@
     gl.uniform1f(U.update.uSpawnRate, spawnRate);
     gl.uniform1f(U.update.uFrame, frameId++);
     gl.uniform2f(U.update.uPointer, pointer[0], pointer[1]);
-
     gl.bindVertexArray(vaos[readIndex]);
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tfos[writeIndex]);
     gl.enable(gl.RASTERIZER_DISCARD);
@@ -667,18 +653,15 @@
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
     readIndex = writeIndex;
   }
-
   function draw() {
     gl.viewport(0, 0, W, H);
     gl.disable(gl.DEPTH_TEST);
     gl.enable(gl.BLEND);
-
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.useProgram(fadeProgram);
     gl.uniform1f(U.fade.uFade, Number(controls.trails.value));
     gl.bindVertexArray(null);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
     gl.useProgram(renderProgram);
     gl.uniform1f(U.render.uAspect, aspect);
@@ -687,15 +670,12 @@
     gl.drawArrays(gl.POINTS, 0, count);
     gl.bindVertexArray(null);
   }
-
   function tick(now) {
     const elapsed = Math.min(0.030, Math.max(0.001, (now - lastT) / 1000));
     lastT = now;
     const simDt = Math.min(0.060, elapsed * Number(controls.physics.value));
-
     if (initializedOnce && !paused) updateParticles(simDt, now * 0.001);
     if (initializedOnce) draw();
-
     frameCount++;
     if (now - fpsT > 350) {
       fps = Math.round(frameCount * 1000 / (now - fpsT));
@@ -706,18 +686,15 @@
     }
     requestAnimationFrame(tick);
   }
-
   try {
     resize();
     setOutputLabels();
     setIcon(AUTHOR_ICON_URL);
-
     if (isTouchy && (navigator.deviceMemory || 4) <= 3) {
       controls.count.value = '262144';
       count = 262144;
       setOutputLabels();
     }
-
     initParticles(count);
     requestAnimationFrame(tick);
   } catch (err) {
